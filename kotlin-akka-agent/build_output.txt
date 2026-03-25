@@ -1,0 +1,12 @@
+﻿> Task :checkKotlinGradlePluginConfigurationErrors
+
+> Task :compileKotlin
+w: file:///C:/Users/jefin/Desktop/Code/DKU/kotlin-akka-agent/src/main/kotlin/com/ecoshield/agents/OrchestratorAgent.kt:155:13 Variable 'emissionFuture' is never used
+w: file:///C:/Users/jefin/Desktop/Code/DKU/kotlin-akka-agent/src/main/kotlin/com/ecoshield/agents/OrchestratorAgent.kt:156:13 Variable 'floodFuture' is never used
+w: file:///C:/Users/jefin/Desktop/Code/DKU/kotlin-akka-agent/src/main/kotlin/com/ecoshield/agents/OrchestratorAgent.kt:157:13 Variable 'exposureFuture' is never used
+w: file:///C:/Users/jefin/Desktop/Code/DKU/kotlin-akka-agent/src/main/kotlin/com/ecoshield/agents/OrchestratorAgent.kt:162:13 Variable 'emissionAdapter' is never used
+w: file:///C:/Users/jefin/Desktop/Code/DKU/kotlin-akka-agent/src/main/kotlin/com/ecoshield/agents/OrchestratorAgent.kt:165:13 Variable 'floodAdapter' is never used
+w: file:///C:/Users/jefin/Desktop/Code/DKU/kotlin-akka-agent/src/main/kotlin/com/ecoshield/agents/OrchestratorAgent.kt:168:13 Variable 'exposureAdapter' is never used
+
+BUILD SUCCESSFUL in 10s
+2 actionable tasks: 2 executed

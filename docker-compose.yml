@@ -1,0 +1,119 @@
+services:
+
+  # ── 1. XGBoost Emission Prediction API ─────────────────────────────────────
+  emission-service:
+    build:
+      context: ./models/EmissionPrediction
+      dockerfile: Dockerfile
+    container_name: ecoshield-emission
+    ports:
+      - "8002:8002"
+    restart: on-failure
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/')"]
+      interval: 30s
+      timeout: 15s
+      retries: 5
+      start_period: 30s          # give XGBoost model time to load
+
+  # ── 2. Flood KNN Route Recommender API ─────────────────────────────────────
+  flood-service:
+    build:
+      context: ./models/ConjestionPrediction
+      dockerfile: Dockerfile
+    container_name: ecoshield-flood
+    ports:
+      - "8003:8003"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8003/')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # ── 3. AQI Exposure Microservice ────────────────────────────────────────────
+  # Host port 8004 to avoid conflict with any local process on 8000
+  exposure-service:
+    build:
+      context: ./backend/exposure-service
+      dockerfile: Dockerfile
+    container_name: ecoshield-exposure
+    ports:
+      - "8004:8000"
+    environment:
+      - WAQI_TOKEN=${WAQI_TOKEN}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # ── 4. Route Aggregator (orchestrator) ─────────────────────────────────────
+  route-service:
+    build:
+      context: ./backend/route-service
+      dockerfile: Dockerfile
+    container_name: ecoshield-route
+    ports:
+      - "8001:8001"
+    environment:
+      - EMISSION_API_URL=http://emission-service:8002/predict
+      - EXPOSURE_API_URL=http://exposure-service:8000/exposure
+      - FLOOD_API_URL=http://flood-service:8003/predict-flood
+      - EVENT_API_URL=http://event-service:8005
+    # Only hard-depend on exposure and flood; emission has a fallback in code
+    depends_on:
+      exposure-service:
+        condition: service_healthy
+      flood-service:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # ── 5. Crowdsourced Event Service ───────────────────────────────────────────
+  event-service:
+    build:
+      context: ./backend/event-service
+      dockerfile: Dockerfile
+    container_name: ecoshield-events
+    ports:
+      - "8005:8005"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8005/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # ── 6. Kotlin Akka Agent Orchestrator ─────────────────────────────────────
+  akka-agent:
+    build:
+      context: ./kotlin-akka-agent
+      dockerfile: Dockerfile
+    container_name: ecoshield-akka-agent
+    ports:
+      - "9001:9001"
+    environment:
+      - EMISSION_API_URL=http://emission-service:8002/predict
+      - EXPOSURE_API_URL=http://exposure-service:8000/exposure
+      - FLOOD_API_URL=http://flood-service:8003/predict-flood
+      - EVENT_API_URL=http://event-service:8005
+    depends_on:
+      emission-service:
+        condition: service_healthy
+      exposure-service:
+        condition: service_healthy
+      flood-service:
+        condition: service_healthy
+      event-service:
+        condition: service_healthy
+    restart: unless-stopped
