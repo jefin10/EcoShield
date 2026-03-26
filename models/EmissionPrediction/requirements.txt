@@ -1,0 +1,11 @@
+# ── Model Training (XgboostModel.py) ──────────────────────────────────────────
+pandas
+numpy
+scikit-learn
+xgboost
+joblib
+
+# ── API Server (api.py) ────────────────────────────────────────────────────────
+fastapi
+uvicorn[standard]
+pydantic
