@@ -13,6 +13,7 @@ import io.ktor.client.request.*
 import io.ktor.http.*
 import kotlinx.coroutines.*
 import kotlinx.serialization.json.*
+import org.slf4j.LoggerFactory
 
 /**
  * EmissionAgent — Autonomous actor that calls the XGBoost Emission Prediction API.
@@ -28,6 +29,8 @@ class EmissionAgent private constructor(
     private val httpClient: HttpClient,
     private val emissionApiUrl: String,
 ) : AbstractBehavior<EmissionAgent.Command>(context) {
+
+    private val logger = LoggerFactory.getLogger(EmissionAgent::class.java)
 
     // ─── Protocol ────────────────────────────────────────────────────────────
     sealed interface Command
@@ -80,10 +83,10 @@ class EmissionAgent private constructor(
                     (co2GPerKm * msg.distanceKm / 1000).round(3)
                 }
             } catch (e: Exception) {
-                context.log.warn("EmissionAgent fallback triggered: ${e.message}")
+                logger.warn("EmissionAgent fallback triggered: ${e.message}")
                 fallbackEmission(msg.vehicleInfo, msg.distanceKm)
             }
-            context.log.info("EmissionAgent: CO₂ = $co2Kg kg for ${msg.distanceKm} km")
+            logger.info("EmissionAgent: CO₂ = $co2Kg kg for ${msg.distanceKm} km")
             msg.replyTo.tell(EmissionResult(co2Kg))        // reply from coroutine
         }
         return this                                         // ← Akka thread freed immediately

@@ -14,6 +14,7 @@ import io.ktor.client.request.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.future.await
 import kotlinx.serialization.json.*
+import org.slf4j.LoggerFactory
 import java.time.Duration
 import java.util.concurrent.CompletableFuture
 
@@ -37,6 +38,8 @@ class OrchestratorAgent private constructor(
     private val exposureAgent: ActorRef<ExposureAgent.Command>,
     private val eventAgent: ActorRef<EventAgent.Command>,
 ) : AbstractBehavior<OrchestratorAgent.Command>(context) {
+
+    private val logger = LoggerFactory.getLogger(OrchestratorAgent::class.java)
 
     sealed interface Command
 
@@ -88,23 +91,27 @@ class OrchestratorAgent private constructor(
         scope.launch {                                    // ← Akka thread freed instantly
             try {
                 val req = msg.request
-                context.log.info(
+                logger.info(
                     "Orchestrator: ${req.from_lat},${req.from_lon} → ${req.to_lat},${req.to_lon} [${req.vehicle_id}]"
                 )
 
                 // Step 1: road-following routes from OSRM ─────────────────────
                 val osrmRoutes = fetchOsrmRoutes(req)
-                context.log.info("Orchestrator: scoring ${osrmRoutes.size} OSRM route(s)…")
+                logger.info("Orchestrator: scoring ${osrmRoutes.size} OSRM route(s)…")
 
-                // Step 2: score every route — each fans out to 3 agents in parallel
-                val scored = osrmRoutes.take(ROUTE_META.size).mapIndexed { idx, route ->
-                    scoreRoute(idx, route, vehicleInfo, req.vehicle_id)
+                // Step 2: score all alternative routes in parallel.
+                // Each route already fans out to 3 agents concurrently; this prevents
+                // N-routes from being processed sequentially and exceeding HTTP timeouts.
+                val scored = coroutineScope {
+                    osrmRoutes.take(ROUTE_META.size).mapIndexed { idx, route ->
+                        async { scoreRoute(idx, route, vehicleInfo, req.vehicle_id) }
+                    }.awaitAll()
                 }
 
                 // Step 3: tag fastest / eco-pick and return ───────────────────
                 msg.responseFuture.complete(tagRoutes(scored))
             } catch (e: Exception) {
-                context.log.error("Orchestrator failed: ${e.message}")
+                logger.error("Orchestrator failed: ${e.message}")
                 msg.responseFuture.completeExceptionally(e)
             }
         }
@@ -141,7 +148,7 @@ class OrchestratorAgent private constructor(
                     Duration.ofSeconds(15), scheduler,
                 ).await().co2Kg
             }.getOrElse {
-                context.log.warn("Route[$index] EmissionAgent timeout: ${it.message}")
+                logger.warn("Route[$index] EmissionAgent timeout: ${it.message}")
                 fallbackEmission(vehicleInfo, distanceKm)
             }
         }
@@ -156,7 +163,7 @@ class OrchestratorAgent private constructor(
                     Duration.ofSeconds(20), scheduler,
                 ).await().floodRiskPercent
             }.getOrElse {
-                context.log.warn("Route[$index] FloodAgent timeout: ${it.message}")
+                logger.warn("Route[$index] FloodAgent timeout: ${it.message}")
                 0.0
             }
         }
@@ -173,7 +180,7 @@ class OrchestratorAgent private constructor(
                     Duration.ofSeconds(20), scheduler,
                 ).await().aqiDose
             }.getOrElse {
-                context.log.warn("Route[$index] ExposureAgent timeout: ${it.message}")
+                logger.warn("Route[$index] ExposureAgent timeout: ${it.message}")
                 35.0 * durationMin * 1.4
             }
         }
@@ -213,7 +220,7 @@ class OrchestratorAgent private constructor(
             data["routes"]?.jsonArray?.map { it.jsonObject }?.takeIf { it.isNotEmpty() }
                 ?: throw Exception("Empty OSRM routes")
         } catch (e: Exception) {
-            context.log.warn("OSRM unavailable, synthetic fallback: ${e.message}")
+            logger.warn("OSRM unavailable, synthetic fallback: ${e.message}")
             generateSyntheticRoutes(req, VEHICLE_MAP[req.vehicle_id]!!)
         }
     }

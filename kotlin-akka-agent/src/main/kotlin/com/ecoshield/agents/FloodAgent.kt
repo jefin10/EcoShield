@@ -13,6 +13,7 @@ import io.ktor.client.request.*
 import io.ktor.http.*
 import kotlinx.coroutines.*
 import kotlinx.serialization.json.*
+import org.slf4j.LoggerFactory
 
 /**
  * FloodAgent — Autonomous actor that calls the KNN Flood Prediction API.
@@ -28,6 +29,8 @@ class FloodAgent private constructor(
     private val httpClient: HttpClient,
     private val floodApiUrl: String,
 ) : AbstractBehavior<FloodAgent.Command>(context) {
+
+    private val logger = LoggerFactory.getLogger(FloodAgent::class.java)
 
     sealed interface Command
 
@@ -71,7 +74,7 @@ class FloodAgent private constructor(
                             val body = Json.parseToJsonElement(response.body<String>()).jsonObject
                             body["flood_probability"]?.jsonPrimitive?.double ?: 0.0
                         } catch (e: Exception) {
-                            context.log.debug("FloodAgent point error: ${e.message}")
+                            logger.debug("FloodAgent point error: ${e.message}")
                             0.0
                         }
                     }
@@ -80,10 +83,10 @@ class FloodAgent private constructor(
                 val avgProb = if (probabilities.isNotEmpty()) probabilities.average() else 0.0
                 (avgProb * 100).round(1)
             } catch (e: Exception) {
-                context.log.warn("FloodAgent fallback triggered: ${e.message}")
+                logger.warn("FloodAgent fallback triggered: ${e.message}")
                 0.0
             }
-            context.log.info("FloodAgent: flood risk = $floodRisk%")
+            logger.info("FloodAgent: flood risk = $floodRisk%")
             msg.replyTo.tell(FloodResult(floodRisk))
         }
         return this

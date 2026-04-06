@@ -13,6 +13,7 @@ import io.ktor.client.request.*
 import io.ktor.http.*
 import kotlinx.coroutines.*
 import kotlinx.serialization.json.*
+import org.slf4j.LoggerFactory
 
 /**
  * ExposureAgent — Autonomous actor that calls the AQI Exposure Microservice.
@@ -26,6 +27,8 @@ class ExposureAgent private constructor(
     private val httpClient: HttpClient,
     private val exposureApiUrl: String,
 ) : AbstractBehavior<ExposureAgent.Command>(context) {
+
+    private val logger = LoggerFactory.getLogger(ExposureAgent::class.java)
 
     sealed interface Command
 
@@ -88,11 +91,11 @@ class ExposureAgent private constructor(
                 }
                 d.round(1)
             } catch (e: Exception) {
-                context.log.warn("ExposureAgent fallback triggered: ${e.message}")
+                logger.warn("ExposureAgent fallback triggered: ${e.message}")
                 val af = ACTIVITY_FACTORS[msg.vehicleId] ?: 1.4
                 (KERALA_AVG_PM25 * msg.durationMin * af).round(1)
             }
-            context.log.info("ExposureAgent: AQI dose = $dose µg·min/m³")
+            logger.info("ExposureAgent: AQI dose = $dose µg·min/m³")
             msg.replyTo.tell(ExposureResult(dose))
         }
         return this
